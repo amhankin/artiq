@@ -96,6 +96,7 @@ class _NIST_Ions(MiniSoC, AMPSoC):
         "timer_kernel": None,
         "rtio": None,
         "i2c": None,
+        "si5324_rst_n": None,
 
         "rtio_crg": 13,
         "kernel_cpu": 14,
@@ -107,6 +108,7 @@ class _NIST_Ions(MiniSoC, AMPSoC):
         "timer_kernel":  0x10000000, # (shadow @0x90000000)
         "rtio":          0x20000000, # (shadow @0xa0000000)
         "i2c":           0x30000000, # (shadow @0xb0000000)
+        "si5324_rst_n":  0x30001000, # (shadow @0xb0001000)
         "mailbox":       0x70000000  # (shadow @0xf0000000)
     }
     mem_map.update(MiniSoC.mem_map)
@@ -137,6 +139,10 @@ class _NIST_Ions(MiniSoC, AMPSoC):
         self.submodules.i2c = gpio.GPIOTristate([i2c.scl, i2c.sda])
         self.register_kernel_cpu_csrdevice("i2c")
         self.config["I2C_BUS_COUNT"] = 1
+
+        si5324 = self.platform.request("si5324", 0)
+        self.submodules.si5324_rst_n = gpio.GPIOOut(si5324.rst_n)
+        self.register_kernel_cpu_csrdevice("si5324_rst_n")
 
     def add_rtio(self, rtio_channels):
         self.submodules.rtio_crg = _RTIOCRG(self.platform, self.crg.cd_sys.clk)
@@ -300,7 +306,7 @@ class NIST_CLOCK(_NIST_Ions):
 class NIST_QC2(_NIST_Ions):
     """
     NIST QC2 hardware, as used in Quantum I and Quantum II, with new backplane
-    and 24 DDS channels.  Two backplanes are used.  
+    and 24 DDS channels.  Two backplanes are used.
     """
     def __init__(self, cpu_type="or1k", **kwargs):
         _NIST_Ions.__init__(self, cpu_type, **kwargs)
@@ -317,19 +323,19 @@ class NIST_QC2(_NIST_Ions):
                 platform.request("ttl", i))
             self.submodules += phy
             rtio_channels.append(rtio.Channel.from_phy(phy, ififo_depth=512))
-        
+
         # CLK0, CLK1 are for clock generators, on backplane SMP connectors
-        for i in range(2):        
+        for i in range(2):
             phy = ttl_simple.ClockGen(
                 platform.request("clkout", i))
             self.submodules += phy
-            clock_generators.append(rtio.Channel.from_phy(phy)) 
+            clock_generators.append(rtio.Channel.from_phy(phy))
 
         # user SMA on KC705 board
         phy = ttl_serdes_7series.Inout_8X(platform.request("user_sma_gpio_n"))
         self.submodules += phy
         rtio_channels.append(rtio.Channel.from_phy(phy, ififo_depth=512))
-        
+
         phy = ttl_simple.Output(platform.request("user_led", 2))
         self.submodules += phy
         rtio_channels.append(rtio.Channel.from_phy(phy))
